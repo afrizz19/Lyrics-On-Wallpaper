@@ -1,0 +1,46 @@
+{
+  "name": "lyrics-app",
+  "version": "1.0.0",
+  "author": "Afrizz",
+  "description": "A lyrics app for Windows",
+  "main": "main.js",
+  "build": {
+    "appId": "com.afrizz.lyricsapp",
+    "copyright": "Copyright © 2025 Afrizz",
+    "productName": "LyricsApp",
+    "files": [
+      "main.js",
+      "lyricsDisplay.html",
+      "fonts/**/*",
+      "trayIcon.ico"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    },
+    "win": {
+      "icon": "icon.ico",
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "dotenv": "^17.2.0",
+    "node-fetch": "^2.7.0",
+    "ws": "^8.18.2"
+  },
+  "devDependencies": {
+    "@types/dotenv": "^6.1.1",
+    "@types/node-fetch": "^2.6.12",
+    "@types/ws": "^8.18.1",
+    "electron": "^26.2.0",
+    "electron-builder": "^26.0.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "start": "ts-node main.ts",
+    "build": "tsc",
+    "electron-start": "npm run build && electron .",
+    "dev": "ts-node main.ts",
+    "dist": "npm run build && electron-builder"
+  }
+}

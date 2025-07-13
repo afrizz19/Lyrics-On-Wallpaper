@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Lyrics Display</title>
+  <style>
+    body {
+      font-family: 'coolvetica', sans-serif;
+      padding: 20px;
+      margin-left: 10px;
+      background: transparent;
+      color: #eee;
+      text-align: center;
+      font-style: italic;
+    }
+
+    @font-face {
+      font-family: 'coolvetica';
+      src: url('fonts/Coolvetica\ Rg\ It.otf') format('truetype');
+    }
+
+    #lyrics {
+      max-width: 600px;
+      margin: 0 auto;
+      line-height: 1.5;
+      text-align: center;
+      scroll-behavior: smooth;
+    }
+
+    .line {
+      padding: 5px 0;
+      text-align: center;
+      opacity: 1;
+      transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+    }
+
+    .scroll-up {
+      animation: scrollUp 0.5s ease forwards;
+    }
+
+    .scroll-up-slow {
+      animation: scrollUpSlow 0.5s ease forwards;
+    }
+
+    @keyframes scrollUp {
+      0% {
+        transform: translateY(20px);
+      }
+
+      100% {
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes scrollUpSlow {
+      0% {
+        transform: translateY(10px);
+      }
+
+      100% {
+        transform: translateY(0);
+      }
+    }
+
+    .current {
+      color: #00ffaa;
+      font-size: 1em;
+      opacity: 1;
+      transform: scale(1.5);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="lyrics">Loading lyrics...</div>
+
+  <script>
+    let lyrics = [];
+    let currentIndex = -1;
+    let previousIndex = -1;
+    let disableAnimation = false;
+
+    async function fetchLyrics() {
+      const res = await fetch('/lyrics');
+      const newLyrics = await res.json();
+      // Compare newLyrics with current lyrics
+      const isDifferent = JSON.stringify(newLyrics) !== JSON.stringify(lyrics);
+      if (isDifferent) {
+        lyrics = newLyrics;
+        renderLyrics();
+        disableAnimation = false;
+      }
+    }
+
+    // WebSocket client to listen for track changes
+    let currentTrack = '';
+    const wsPort = window.location.port || '8974'; // Use the same port as the HTTP server
+    const ws = new WebSocket(`ws://localhost:${wsPort}`);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.track_name && data.track_name !== currentTrack) {
+          currentTrack = data.track_name;
+          fetchLyrics();
+          currentIndex = -1; // reset current index on new song
+        }
+      } catch (e) {
+        console.error('Error parsing WebSocket message:', e);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    async function fetchPosition() {
+      try {
+        const res = await fetch('/position');
+        const data = await res.json();
+        return data.position;
+      } catch {
+        return null;
+      }
+    }
+
+    function parsePosition(posStr) {
+      if (!posStr) return 0;
+      if (posStr.includes(':')) {
+        const parts = posStr.split(':');
+        if (parts.length === 2) {
+          const minutes = parseInt(parts[0], 10);
+          const seconds = parseFloat(parts[1]);
+          return minutes * 60 + seconds;
+        }
+      }
+      return parseFloat(posStr) || 0;
+    }
+
+    function renderLyrics() {
+      const container = document.getElementById('lyrics');
+      // Show 3 lines: previous, current, next with conditional animations
+      if (currentIndex >= 0 && currentIndex < lyrics.length) {
+        const start = Math.max(0, currentIndex - 1);
+        const end = Math.min(lyrics.length - 1, currentIndex + 1);
+        const visibleLines = [];
+        for (let i = start; i <= end; i++) {
+          let animationClass = '';
+          if (i === currentIndex) {
+            animationClass = 'current';
+            if (!disableAnimation) animationClass += ' scroll-up';
+          } else if (i === currentIndex - 1) {
+            if (!disableAnimation) animationClass = 'scroll-up-slow';
+          } else if (i === currentIndex + 1) {
+            if (!disableAnimation) animationClass = 'scroll-up-slow';
+          }
+          visibleLines.push(`<div class="line ${animationClass}" id="line-${i}">${lyrics[i].text}</div>`);
+        }
+        container.innerHTML = visibleLines.join('');
+      } else {
+        container.innerHTML = 'Loading lyrics...';
+      }
+    }
+
+    function easeInOutQuad(t) {
+      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+    }
+
+    function smoothScrollTo(element, target, duration) {
+      const start = element.scrollTop;
+      const change = target - start;
+      const startTime = performance.now();
+
+      function animateScroll(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const easeProgress = easeInOutQuad(progress);
+        element.scrollTop = start + change * easeProgress;
+        if (elapsed < duration) {
+          requestAnimationFrame(animateScroll);
+        }
+      }
+      requestAnimationFrame(animateScroll);
+    }
+
+    let lastPosition = 0;
+    let fetchIntervalId = null;
+    let fetchTimeoutId = null;
+
+    async function updateCurrentLine() {
+      const posStr = await fetchPosition();
+      const position = parsePosition(posStr);
+      console.log('Current position:', position);
+      let newIndex = -1;
+      for (let i = 0; i < lyrics.length; i++) {
+        if (position < lyrics[i].time) {
+          newIndex = i - 1;
+          break;
+        }
+      }
+      if (newIndex === -1) {
+        newIndex = lyrics.length - 1;
+      }
+      if (newIndex !== currentIndex) {
+        previousIndex = currentIndex;
+        currentIndex = newIndex;
+        renderLyrics();
+        // No scrolling needed since only one line is shown
+      }
+
+      // Removed position reset check and related interval/timeout logic
+
+      lastPosition = position;
+    }
+
+    // Periodically refresh lyrics every 10 seconds to catch updates in output.lrc
+    // setInterval(() => {
+    //   fetchLyrics();
+    // }, 100000);
+
+    async function start() {
+      await fetchLyrics();
+      setInterval(updateCurrentLine, 100);
+    }
+
+    // Periodically fetch lyrics every 5 seconds to detect changes in output.lrc content
+    setInterval(fetchLyrics, 5000);
+
+    start();
+  </script>
+</body>
+
+</html>
